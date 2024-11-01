@@ -98,3 +98,11 @@ export const User = mongoose.model("User", userSchema)
 
 
 
+/*
+Project configs
+Define schema
+Defining any pre middleware
+Writing custom methods for JWT token
+*/
+
+

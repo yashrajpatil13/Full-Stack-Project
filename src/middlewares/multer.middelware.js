@@ -14,3 +14,7 @@ const storage = multer.diskStorage({
 export const upload = multer({ 
     storage,
 })
+
+/*
+For multer pre config diskstorage method needs to be passed an object of methods
+*/
