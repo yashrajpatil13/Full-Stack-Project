@@ -5,7 +5,26 @@ import { uploadOnCloudinary } from "../utils/cloudinary.js"
 import { upload } from "../middlewares/multer.middelware.js"
 import { ApiResponse } from "../utils/apiResponse.js"
 
+const emailPattern = /^\w+@[a-zA-Z_]+?\.[a-zA-Z]{2,3}$/
+const passwordPattern = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,}$/
 
+
+const generateAccessAndRefreshTokens = async (userId) => {
+    try {
+        const user = await User.findById(userId)
+        const accessToken = user.generateAccessToken()
+        const refreshToken = user.generateRefreshToken()
+
+        user.refreshToken = refreshToken
+        await user.save({ validateBeforeSave: false })
+        // While saving the mongoose models kicks in so above oject is passed to save method to prevent unnecessary validation in this case
+
+        return { accessToken, refreshToken }
+
+    } catch (error) {
+        throw new ApiErrors(500, "Something went wrong while generating refresh and access token.")
+    }
+}
 
 const registerUser = asyncHandler(async (req, res) => {
     // get user details from frontend
@@ -19,22 +38,17 @@ const registerUser = asyncHandler(async (req, res) => {
     // return response
 
     // Any data coming from form or json can be accessed using request
-    const {fullname, email, username, password} = req.body
+    const { fullname, email, username, password } = req.body
 
-    const emailPattern = /^\w+@[a-zA-Z_]+?\.[a-zA-Z]{2,3}$/
-    const passwordPattern = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,}$/
 
     // Check if any field is empty and is in pattern
-    if( [fullname, email, username, password].some((field) => field?.trim() === "") )
-    {
+    if ([fullname, email, username, password].some((field) => field?.trim() === "")) {
         throw new ApiErrors(400, "All fields are required")
     }
-    if ( !emailPattern.test(email) )
-    {
+    if (!emailPattern.test(email)) {
         throw new ApiErrors(400, "Enter a valid email")
     }
-    if ( !passwordPattern.test(password) )
-    {
+    if (!passwordPattern.test(password)) {
         throw new ApiErrors(400, "Enter a valid password")
     }
 
@@ -44,7 +58,7 @@ const registerUser = asyncHandler(async (req, res) => {
         $or: [{ username }, { email }]
     })
 
-    if(existedUser) {
+    if (existedUser) {
         throw new ApiErrors(409, "User already exists!")
     }
 
@@ -52,18 +66,18 @@ const registerUser = asyncHandler(async (req, res) => {
     // const coverImageLocalPath = req.files?.coverImage[0]?.path
 
     let coverImageLocalPath
-    if( req.files && Array.isArray(req.files.coverImage) && req.files.coverImage.length>0 ) {
+    if (req.files && Array.isArray(req.files.coverImage) && req.files.coverImage.length > 0) {
         coverImageLocalPath = req.files.coverImage[0].path
     }
 
-    if(!avatarLocalPath) {
+    if (!avatarLocalPath) {
         throw new ApiErrors(400, "Avatar file is required")
     }
 
     const avatar = await uploadOnCloudinary(avatarLocalPath)
     const coverImage = await uploadOnCloudinary(coverImageLocalPath)
 
-    if(!avatar) {
+    if (!avatar) {
         throw new ApiErrors(500, "Could not upload avatar on the cloudinary:[")
     }
 
@@ -80,7 +94,7 @@ const registerUser = asyncHandler(async (req, res) => {
         "-password -refreshToken"
     )
 
-    if(!createdUser) {
+    if (!createdUser) {
         throw new ApiErrors(500, "Something went wrong while registering the user")
     }
 
@@ -93,4 +107,91 @@ const registerUser = asyncHandler(async (req, res) => {
 
 })
 
-export {registerUser}
+const loginUser = asyncHandler(async (req, res) => {
+    // req body => data
+    // usernmae or password
+    // find the user
+    // password check
+    // access and refresh token
+    // send cookie
+
+    const { username, email, password } = req.body
+
+    if (!username || !email) {
+        throw new ApiErrors(400, "username or email and password is required")
+    }
+
+    const user = await User.findOne({
+        $or: [{ username }, { email }]
+    })
+
+    if (!user) {
+        throw new ApiErrors(404, "User does not exist!")
+    }
+
+    const isPasswordValid = await user.isPasswordCorrect(password)
+
+    if (!isPasswordValid) {
+        throw new ApiErrors(401, "Invalid user credentials")
+    }
+
+    const { accessToken, refreshToken } = await generateAccessAndRefreshTokens(user._id)
+
+    const loggedInUser = await User.findById(user._id).select("-password -refreshToken")
+
+    const options = {
+        httpOnly: true,
+        secure: true
+    }
+
+    return res
+        .status(200)
+        .cookie("accessToken", accessToken, options)
+        .cookie("refreshToken", refreshToken, options)
+        .json(
+            new ApiResponse(
+                200,
+                {
+                    user: loggedInUser,
+                    accessToken,
+                    refreshToken
+                },
+                "User logged In successfully"
+            )
+        )
+
+})
+
+const logoutUser = asyncHandler(async (req, res) => {
+    await User.findByIdAndUpdate(
+        req.user._id,
+        {
+            $set: {
+                refreshToken: undefined
+            }
+        },
+        {
+            new: true
+        }
+        // Takes id and an obj with desired updates. This obj cointaines a mongodb operator the takes an object cointaining values to update and new values 
+    )                                                   // To avoid querying a user, holdind it in a var then updating it and then saving it with validateBeforeSave we use above method
+
+    const options = {
+        httpOnly: true,
+        secure: true
+    }
+
+    return res
+    .status(200)
+    .clearCookie("accessToken", options)
+    .clearCookie("refreshToken", options)
+    .json( 200, {}, "User logged out")
+
+})
+
+
+export {
+    registerUser,
+    loginUser,
+    logoutUser
+}
