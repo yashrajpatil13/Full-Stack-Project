@@ -20,7 +20,6 @@ const registerUser = asyncHandler(async (req, res) => {
 
     // Any data coming from form or json can be accessed using request
     const {fullname, email, username, password} = req.body
-    console.log(`Request body: `, req.body)
 
     const emailPattern = /^\w+@[a-zA-Z_]+?\.[a-zA-Z]{2,3}$/
     const passwordPattern = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,}$/
@@ -28,7 +27,7 @@ const registerUser = asyncHandler(async (req, res) => {
     // Check if any field is empty and is in pattern
     if( [fullname, email, username, password].some((field) => field?.trim() === "") )
     {
-        throw new ApiErrors(400, "All fiels are required")
+        throw new ApiErrors(400, "All fields are required")
     }
     if ( !emailPattern.test(email) )
     {
@@ -41,7 +40,7 @@ const registerUser = asyncHandler(async (req, res) => {
 
     // findOne is a mongoose Query (Format: Model.query()). Returns a Query obj.
     // $or: It’s useful when you want to check multiple fields and need to know if at least one of them matches.
-    const existedUser = User.findOne({
+    const existedUser = await User.findOne({
         $or: [{ username }, { email }]
     })
 
@@ -49,14 +48,19 @@ const registerUser = asyncHandler(async (req, res) => {
         throw new ApiErrors(409, "User already exists!")
     }
 
-    const avatarLocaPath = req.files?.avatar[0]?.path  // Files access is given by multer, and the path can be accessed by uploaded files first property
-    const coverImageLocalPath = req.files?.coverImage[0]?.path
+    const avatarLocalPath = req.files?.avatar[0]?.path  // Files access is given by multer, and the path can be accessed by uploaded files first property
+    // const coverImageLocalPath = req.files?.coverImage[0]?.path
 
-    if(!avatarLocaPath) {
+    let coverImageLocalPath
+    if( req.files && Array.isArray(req.files.coverImage) && req.files.coverImage.length>0 ) {
+        coverImageLocalPath = req.files.coverImage[0].path
+    }
+
+    if(!avatarLocalPath) {
         throw new ApiErrors(400, "Avatar file is required")
     }
 
-    const avatar = await uploadOnCloudinary(avatarLocaPath)
+    const avatar = await uploadOnCloudinary(avatarLocalPath)
     const coverImage = await uploadOnCloudinary(coverImageLocalPath)
 
     if(!avatar) {
