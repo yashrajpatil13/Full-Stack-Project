@@ -4,6 +4,7 @@ import { User } from "../models/user.models.js"
 import { uploadOnCloudinary } from "../utils/cloudinary.js"
 import { upload } from "../middlewares/multer.middelware.js"
 import { ApiResponse } from "../utils/apiResponse.js"
+import jwt from "jsonwebtoken"
 
 const emailPattern = /^\w+@[a-zA-Z_]+?\.[a-zA-Z]{2,3}$/
 const passwordPattern = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,}$/
@@ -49,7 +50,7 @@ const registerUser = asyncHandler(async (req, res) => {
         throw new ApiErrors(400, "Enter a valid email")
     }
     if (!passwordPattern.test(password)) {
-        throw new ApiErrors(400, "Enter a valid password")
+        throw new ApiErrors(400, "Enter a strong password")
     }
 
     // findOne is a mongoose Query (Format: Model.query()). Returns a Query obj.
@@ -61,11 +62,11 @@ const registerUser = asyncHandler(async (req, res) => {
     if (existedUser) {
         throw new ApiErrors(409, "User already exists!")
     }
-
+    
     const avatarLocalPath = req.files?.avatar[0]?.path  // Files access is given by multer, and the path can be accessed by uploaded files first property
     // const coverImageLocalPath = req.files?.coverImage[0]?.path
 
-    let coverImageLocalPath
+    let coverImageLocalPath = ""
     if (req.files && Array.isArray(req.files.coverImage) && req.files.coverImage.length > 0) {
         coverImageLocalPath = req.files.coverImage[0].path
     }
@@ -117,7 +118,7 @@ const loginUser = asyncHandler(async (req, res) => {
 
     const { username, email, password } = req.body
 
-    if (!username || !email) {
+    if (!(username || email)) {
         throw new ApiErrors(400, "username or email and password is required")
     }
 
@@ -185,13 +186,55 @@ const logoutUser = asyncHandler(async (req, res) => {
     .status(200)
     .clearCookie("accessToken", options)
     .clearCookie("refreshToken", options)
-    .json( 200, {}, "User logged out")
+    .json( new ApiResponse(200, {}, "User logged out") )
 
+})
+
+const refreshAccessToken = asyncHandler(async (req, res) => {
+    try {
+        const incomingRefreshToken = req.cookies.refreshToken || req.body.refreshToken
+
+        if(!incomingRefreshToken) {
+            throw new ApiErrors(401, "Unauthorized request")
+        }
+
+        const decodedToken = jwt.verify(incomingRefreshToken, process.env.REFRESH_TOKEN_SECRET)
+
+        const user = await User.findById(decodedToken?._id)
+
+        if(!user) {
+            throw new ApiErrors(401, "Invalid refresh token")
+        }
+
+        if(incomingRefreshToken !== user?.refreshToken) {
+            throw new ApiErrors(401, "Refresh token is expired or used")
+        }
+
+        const options = {
+            httpOnly: true,
+            secure: true
+        }
+
+        const { accessToken, refreshToken } = await generateAccessAndRefreshTokens(user._id)
+
+        return res
+        .status(200)
+        .cookie("accessToken", accessToken, options)
+        .cookie("refreshToken", refreshToken, options)
+        .json(
+            new ApiResponse(200, {refreshToken, accessToken}, "Access token refreshed")
+        )
+
+    } catch (error) {
+        console.log(error.statusCode, error.message)
+        throw error
+    }
 })
 
 
 export {
     registerUser,
     loginUser,
-    logoutUser
+    logoutUser,
+    refreshAccessToken
 }
