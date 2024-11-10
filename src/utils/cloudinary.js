@@ -15,7 +15,7 @@ const uploadOnCloudinary = async (localFilePath) => {
         if(!localFilePath) return null
         // Upload the file on cloudinary
         const response = await cloudinary.uploader.upload(localFilePath, {
-            resource_type: "auto"
+            resource_type: "image"
         })
         fs.unlinkSync(localFilePath)
         return response
@@ -26,8 +26,26 @@ const uploadOnCloudinary = async (localFilePath) => {
     }
 }
 
+const deleteOnCloudinary = async (oldCloudinaryPublicID) => {
+    try {
+        const response = await cloudinary.uploader.destroy(oldCloudinaryPublicID, { resource_type: "image" })
+        return response
+    } catch (error) {
+        console.log(error)
+        return null
+    }
+}
 
-export {uploadOnCloudinary}
+const getCloudinaryPublicId = (url) => {
+    // Remove the base URL and file extension to get the public ID
+    const parts = url.split("/");
+    const publicIdWithExtension = parts.slice(-1)[0]; // Get the last part with the extension
+    const publicId = publicIdWithExtension.split(".")[0]; // Remove the extension
+    return publicId;
+}
+
+
+export {uploadOnCloudinary, deleteOnCloudinary, getCloudinaryPublicId}
 
 
 

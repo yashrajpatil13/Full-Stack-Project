@@ -1,7 +1,7 @@
 import { asyncHandler } from "../utils/asyncHandler.js"
 import { ApiErrors } from "../utils/apiErrors.js"
 import { User } from "../models/user.models.js"
-import { uploadOnCloudinary } from "../utils/cloudinary.js"
+import { uploadOnCloudinary, deleteOnCloudinary, getCloudinaryPublicId} from "../utils/cloudinary.js"
 import { upload } from "../middlewares/multer.middelware.js"
 import { ApiResponse } from "../utils/apiResponse.js"
 import jwt from "jsonwebtoken"
@@ -285,7 +285,7 @@ const updateAccountDetails = asyncHandler(async (req, res) => {
 })
 
 const updateUserAvatar =  asyncHandler(async(req, res) => {
-    const avatarLocalPath = req.file?.path
+    const avatarLocalPath = req.files?.avatar[0]?.path
 
     if(!avatarLocalPath) {
         throw new ApiErrors(400, "Avatar file is missing")
@@ -294,6 +294,14 @@ const updateUserAvatar =  asyncHandler(async(req, res) => {
     const avatar = await uploadOnCloudinary(avatarLocalPath)
     if(!avatar) {
         throw new ApiErrors(400, "Error while uploading on cloudniary")
+    }
+    
+    const oldAvatarCloudinaryPublicID = getCloudinaryPublicId(req.user?.avatar)
+    
+    const deleteOldAvatarOnCloudinary = await deleteOnCloudinary(oldAvatarCloudinaryPublicID)
+
+    if(!deleteOldAvatarOnCloudinary) {
+        throw new ApiErrors(400, "Error deleting old avatar file from cloudinary")
     }
 
     const user = await User.findByIdAndUpdate(
@@ -313,8 +321,9 @@ const updateUserAvatar =  asyncHandler(async(req, res) => {
     )
 })
 
+// Update method with deleteOnCLoudinary before adding endpoint
 const updateUserCoverImage =  asyncHandler(async(req, res) => {
-    const coverImageLocalPath = req.file?.path
+    const coverImageLocalPath = req.file?.coverImage[0]?.path
 
     if(!coverImageLocalPath) {
         throw new ApiErrors(400, "Cover image file is missing")
